@@ -50,19 +50,25 @@
   }
   async function install({ editor, getTitle, setTitle, activate, status, storageFactory = openStorage }) {
     const $ = id => document.getElementById(id);
-    // 恢复完成前不接受新编辑，避免异步读取的旧工程覆盖用户刚输入的内容。
+    // 读取本地工程期间暂停操作，读取完成后由用户选择样例或继续上次。
     document.body.classList.add('storage-loading');
-    let restoring = false, clipboard = null, imageTarget = null, storage;
+    let restoring = false, clipboard = null, imageTarget = null, storage, pending = null, started = false;
     const capture = () => ({ title: getTitle(), project: editor.getProjectData(), savedAt: Date.now() });
-    const autosave = createAutosave({ read: capture, write: value => storage.put('current', value), changed: text => { $('save-state').textContent = text; } });
+    const autosave = createAutosave({ read: capture, write: async value => {
+      // 先保存上次工程，再允许样例或新导入内容占用当前工程槽位。
+      if (pending) await storage.put('previous', pending);
+      await storage.put('current', value);
+      pending = null;
+    }, changed: text => { $('save-state').textContent = text; } });
+    const begin = () => { started = true; if (storage) autosave.touch(); };
     const restore = async value => {
       await autosave.flush();
       restoring = true;
-      try { editor.loadProjectData(value.project); setTitle(value.title); editor.UndoManager.clear(); editor.select(null); activate(); }
+      try { editor.loadProjectData(value.project); setTitle(value.title); editor.UndoManager.clear(); editor.select(null); started = true; activate(); }
       finally { restoring = false; }
       autosave.touch();
     };
-    editor.on('update', () => { if (storage && !restoring) autosave.touch(); });
+    editor.on('update', () => { if (storage && started && !restoring) autosave.touch(); });
     window.addEventListener('beforeunload', event => { if (autosave.dirty()) { event.preventDefault(); event.returnValue = ''; } });
     document.addEventListener('visibilitychange', () => { if (document.hidden && storage) autosave.flush().catch(() => status('本地保存失败，请导出页面。', true)); });
     async function snapshot(label) {
@@ -81,7 +87,9 @@
     };
     async function showVersions() {
       const list = $('version-list'); list.replaceChildren();
-      for (const value of await storage.get('versions') || []) {
+      const previous = await storage.get('previous');
+      const versions = await storage.get('versions') || [];
+      for (const value of [...(previous ? [{ ...previous, label: '上次工程 · ' + previous.title }] : []), ...versions]) {
         const button = document.createElement('button');
         button.textContent = value.label + ' · ' + new Date(value.savedAt).toLocaleString();
         button.onclick = async () => { try { await restore(value); $('versions-dialog').close(); } catch { status('恢复未完成，请导出当前页面后重试。', true); } };
@@ -136,13 +144,19 @@
     refresh();
     try {
       storage = await storageFactory();
-      const current = await storage.get('current');
-      if (current) { await restore(current); await autosave.flush(); }
+      pending = await storage.get('current');
+      $('demo-resume').hidden = !pending;
+      $('demo-resume').onclick = async () => {
+        $('demo-resume').disabled = true;
+        try { await restore(pending); pending = null; await autosave.flush(); }
+        catch { status('恢复未完成，上次工程仍保留在本地。', true); }
+        finally { $('demo-resume').disabled = false; }
+      };
       $('save-project').disabled = false; $('versions-open').disabled = false;
-      $('save-state').textContent = current ? '已恢复' : '本地保存';
+      $('save-state').textContent = '本地保存';
     } catch { storage = null; $('save-state').textContent = '保存不可用'; status('浏览器存储不可用，请导出页面保存修改。', true); }
     finally { document.body.classList.remove('storage-loading'); }
-    return { autosave, restore, capture, snapshot };
+    return { autosave, restore, capture, snapshot, begin };
   }
   globalThis.EagleEditorTools = { createAutosave, imageType, cloneSelected, install };
 })();

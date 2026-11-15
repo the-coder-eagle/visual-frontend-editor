@@ -23,8 +23,10 @@ test('演示按钮控制暂停、试用、导入；无效导入不关闭演示',
   const engine = { on() {}, getWrapper: () => ({ getId: () => 'root', find: () => [heading] }), select: value => selected.push(value) };
   const document = { getElementById: node, querySelectorAll: () => [], addEventListener() {}, body: { classList: classes() } };
   const grapesjs = { init: () => engine };
+  let began = 0;
+  const window = { grapesjs, DOMPurify: {}, addEventListener() {}, prototypeEditor: { tools: { begin: () => began++ } } };
   vm.runInNewContext(await readFile(new URL('../app.js', import.meta.url), 'utf8'), {
-    document, grapesjs, window: { grapesjs, DOMPurify: {}, addEventListener() {} },
+    document, grapesjs, window,
   });
   node('demo-pause').click();
   assert.equal(node('welcome').classList.contains('is-paused'), true);
@@ -45,4 +47,5 @@ test('演示按钮控制暂停、试用、导入；无效导入不关闭演示',
   assert.equal(node('export-open').disabled, false);
   assert.equal(node('text').focused, true);
   assert.deepEqual(selected, [heading]);
+  assert.equal(began, 1);
 });

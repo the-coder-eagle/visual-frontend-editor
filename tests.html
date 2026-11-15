@@ -14,6 +14,7 @@ const timer = setInterval(async () => {
   await check('首次演示不修改示例与历史，支持暂停', () => {
     const before = exportHtml();
     assert(!ui.getElementById('welcome').hidden, '未显示演示');
+    assert(ui.getElementById('demo-resume').hidden, '没有历史工程时显示了继续上次');
     assert(frame.contentWindow.getComputedStyle(ui.getElementById('import-open')).display === 'none' && frame.contentWindow.getComputedStyle(ui.getElementById('demo-import')).display !== 'none', '欢迎页重复导入入口');
     assert(ui.getElementById('export-open').disabled, '演示时导出未禁用');
     ui.getElementById('demo-pause').click();
@@ -29,12 +30,13 @@ const timer = setInterval(async () => {
     try { importHtml(' '); } catch {}
     assert(!ui.getElementById('welcome').hidden, '演示被提前关闭');
   });
-  await check('试一试进入真实编辑器，保留原示例', () => {
+  await check('试用样例进入海报编辑，保留原示例', () => {
     const before = exportHtml();
     ui.getElementById('demo-start').click();
     assert(ui.getElementById('welcome').hidden && !ui.getElementById('export-open').disabled, '未进入编辑');
     assert(editor.getSelected().get('tagName') === 'h1', '未选中标题');
     assert(before === exportHtml(), '试用改变了页面');
+    assert(editor.getSelected().getEl().textContent === '由你，定义。', '加载了其他页面');
   });
   await check('导入中文标题、嵌套内容和 CSS', () => {
     importHtml('<title>测试 & 页面</title><style>.hero{color:rgb(20,60,30);padding:24px}@media(max-width:480px){.hero{padding:12px}}</style><main><h1 class="hero">原标题</h1><p>保留<strong>嵌套</strong>文字</p><a href="#test">链接</a></main>');

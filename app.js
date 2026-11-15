@@ -26,6 +26,7 @@
     document.body.classList.remove('is-welcoming');
     $('export-open').disabled = false;
     $('preview').disabled = false;
+    window.prototypeEditor?.tools?.begin();
   }
   $('demo-start').onclick = () => {
     dismissWelcome();

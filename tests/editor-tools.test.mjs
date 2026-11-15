@@ -39,13 +39,31 @@ test('恢复工程后继续自动保存；版本快照恢复标题和组件并�
  const element=()=>({value:'',disabled:false,children:[],append(child){this.children.push(child);},replaceChildren(){this.children=[];},close(){this.closed=true;},showModal(){this.open=true;}});
  const node=id=>{if(!nodes.has(id))nodes.set(id,element());return nodes.get(id);};
  context.document={getElementById:node,createElement:element,addEventListener(){},body:{classList:{add:key=>classes.add(key),remove:key=>classes.delete(key)}}};context.window={addEventListener(){}};
- const db=new Map([['current',{title:'已有作品',project:{pages:['saved']}}]]);
+ const db=new Map([['current',{title:'已有作品',project:{pages:['saved']}}],['previous',{title:'保留的旧工程',project:{pages:['previous']}}]]);
  const editor={on(name,fn){for(const n of name.split(' '))events[n]=fn;},getSelected:()=>null,getWrapper:()=>({}),getProjectData:()=>project,loadProjectData:value=>{project=value;events.update?.();},select(){},UndoManager:{clear(){cleared++;}}};
  const tools=await context.EagleEditorTools.install({editor,getTitle:()=>title,setTitle:value=>{title=value;},activate:()=>activated++,status(){},storageFactory:async()=>({get:async key=>db.get(key),put:async(key,value)=>db.set(key,structuredClone(value))})});
- assert.equal(title,'已有作品');assert.equal(project.pages[0],'saved');assert.equal(activated,1);assert.equal(classes.has('storage-loading'),false);
+ assert.equal(title,'示例');assert.equal(project.pages[0],'sample');assert.equal(activated,0);assert.equal(classes.has('storage-loading'),false);
+ assert.equal(node('demo-resume').hidden,false);events.update();await tools.autosave.flush();assert.equal(db.get('current').title,'已有作品');
+ await node('demo-resume').onclick();assert.equal(title,'已有作品');assert.equal(project.pages[0],'saved');assert.equal(activated,1);
+ assert.equal(db.get('previous').title,'保留的旧工程');
  project={pages:['changed']};events.update();await tools.autosave.flush();assert.equal(db.get('current').project.pages[0],'changed');
  node('version-name').value='定稿';await node('save-project').onclick();assert.equal(db.get('versions')[0].label,'定稿');
- project={pages:['another']};events.update();await tools.autosave.flush();await node('version-list').children[0].onclick();await tools.autosave.flush();
+ project={pages:['another']};events.update();await tools.autosave.flush();await node('version-list').children.find(button=>button.textContent.startsWith('定稿')).onclick();await tools.autosave.flush();
  assert.equal(project.pages[0],'changed');assert.equal(title,'已有作品');assert.equal(cleared,2);assert.equal(tools.autosave.dirty(),false);
  await tools.snapshot('修改 HTML 前');assert.equal(db.get('versions')[0].label,'修改 HTML 前');assert.equal(db.get('versions')[0].project.pages[0],'changed');
+});
+
+test('试用样例保留上次工程；备份失败时不覆盖原工程，重试后可从版本找回',async()=>{
+ const nodes=new Map(),events={},db=new Map([['current',{title:'上次导入',project:{pages:['imported']},savedAt:1}]]);
+ let title='由你定义',project={pages:['sample']},fail=true;
+ const element=()=>({value:'',children:[],append(child){this.children.push(child);},replaceChildren(){this.children=[];},close(){},showModal(){}});
+ const node=id=>{if(!nodes.has(id))nodes.set(id,element());return nodes.get(id);};
+ context.document={getElementById:node,createElement:element,addEventListener(){},body:{classList:{add(){},remove(){}}}};context.window={addEventListener(){}};
+ const editor={on(name,fn){for(const n of name.split(' '))events[n]=fn;},getSelected:()=>null,getWrapper:()=>({}),getProjectData:()=>project,loadProjectData:value=>{project=value;},select(){},UndoManager:{clear(){}}};
+ const tools=await context.EagleEditorTools.install({editor,getTitle:()=>title,setTitle:value=>{title=value;},activate(){},status(){},storageFactory:async()=>({get:async key=>db.get(key),put:async(key,value)=>{if(key==='previous'&&fail)throw Error('QuotaExceededError');db.set(key,structuredClone(value));}})});
+ tools.begin();await assert.rejects(tools.autosave.flush(),/Quota/);assert.equal(db.get('current').title,'上次导入');assert.equal(tools.autosave.dirty(),true);
+ fail=false;await tools.autosave.flush();assert.equal(db.get('current').title,'由你定义');assert.equal(db.get('previous').title,'上次导入');
+ project={pages:['edited sample']};events.update();await tools.autosave.flush();assert.equal(db.get('previous').project.pages[0],'imported');
+ await node('versions-open').onclick();assert.match(node('version-list').children[0].textContent,/上次工程 · 上次导入/);
+ await node('version-list').children[0].onclick();await tools.autosave.flush();assert.equal(title,'上次导入');assert.equal(project.pages[0],'imported');
 });
