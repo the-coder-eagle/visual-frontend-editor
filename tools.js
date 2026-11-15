@@ -65,13 +65,17 @@
     editor.on('update', () => { if (storage && !restoring) autosave.touch(); });
     window.addEventListener('beforeunload', event => { if (autosave.dirty()) { event.preventDefault(); event.returnValue = ''; } });
     document.addEventListener('visibilitychange', () => { if (document.hidden && storage) autosave.flush().catch(() => status('本地保存失败，请导出页面。', true)); });
+    async function snapshot(label) {
+      if (!storage) throw Error('本地保存不可用，请先导出当前页面。');
+      autosave.touch(); await autosave.flush();
+      const versions = await storage.get('versions') || [];
+      versions.unshift({ ...capture(), label });
+      await storage.put('versions', versions.slice(0, 8));
+    }
     $('save-project').onclick = async () => {
       if (!storage) return;
       try {
-        autosave.touch(); await autosave.flush();
-        const versions = await storage.get('versions') || [];
-        versions.unshift({ ...capture(), label: $('version-name').value.trim() || getTitle() });
-        await storage.put('versions', versions.slice(0, 8));
+        await snapshot($('version-name').value.trim() || getTitle());
         $('version-name').value = ''; await showVersions();
       } catch { status('本地保存失败，请导出页面。', true); }
     };
@@ -138,7 +142,7 @@
       $('save-state').textContent = current ? '已恢复' : '本地保存';
     } catch { storage = null; $('save-state').textContent = '保存不可用'; status('浏览器存储不可用，请导出页面保存修改。', true); }
     finally { document.body.classList.remove('storage-loading'); }
-    return { autosave, restore, capture };
+    return { autosave, restore, capture, snapshot };
   }
   globalThis.EagleEditorTools = { createAutosave, imageType, cloneSelected, install };
 })();

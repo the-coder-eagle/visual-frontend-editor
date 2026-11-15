@@ -25,6 +25,7 @@
     $('welcome').hidden = true;
     document.body.classList.remove('is-welcoming');
     $('export-open').disabled = false;
+    $('preview').disabled = false;
   }
   $('demo-start').onclick = () => {
     dismissWelcome();
@@ -122,15 +123,11 @@
   });
   editor.on('component:resize:end dmode:end', refreshProperties);
 
-  function importHtml(source, name = '导入的页面') {
+  let documentSupport;
+  function importHtml(source, name = '导入的页面', preserveScripts = false) {
     if (!source.trim()) throw new Error('请先选择文件或粘贴 HTML。');
     // 用户导入的是网页文件。清理执行入口，并阻止 data-gjs-* 将输入解释为引擎配置。
-    const clean = DOMPurify.sanitize(source, {
-      WHOLE_DOCUMENT: true, ADD_TAGS: ['style'],
-      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'link', 'base', 'meta'],
-      ALLOW_DATA_ATTR: false,
-    });
-    const doc = new DOMParser().parseFromString(clean, 'text/html');
+    const { doc, scripts } = EagleEditorDocument.prepare(source, preserveScripts);
     if (!doc.body.textContent.trim() && !doc.body.querySelector('img,svg,hr')) throw new Error('没有找到可编辑的页面内容。');
     // 构造式样式表按浏览器 CSS 语法解析，并丢弃 @import 外链。
     const sheet = new CSSStyleSheet();
@@ -154,6 +151,7 @@
     editor.setStyle(css);
     if (bodyStyle) wrapper.addStyle(editor.Parser.parseStyle(bodyStyle));
     editor.setComponents(doc.body.innerHTML);
+    documentSupport.setScripts(scripts);
     editor.UndoManager.clear();
     editor.select(null);
     $('project-name').textContent = title;
@@ -162,8 +160,7 @@
   }
 
   function exportHtml() {
-    const safeTitle = title.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-    return `<!doctype html>\n<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle}</title><style>${editor.getCss().replace(/<\/style/gi, '<\\/style')}</style></head>${editor.getHtml()}</html>`;
+    return EagleEditorDocument.serialize(editor.getHtml(), editor.getCss({ keepUnusedStyles: true }), title, documentSupport.getScripts());
   }
 
   const rgbHex = value => {
@@ -367,9 +364,28 @@
   $('device').onchange = () => editor.setDevice($('device').value);
   $('preview').onclick = () => {
     previewing = !previewing;
-    if (previewing) editor.runCommand('core:preview'); else editor.stopCommand('core:preview');
+    $('runtime-preview').hidden = !previewing;
+    document.querySelector('.workspace').classList.toggle('is-previewing', previewing);
+    if (previewing) {
+      editor.select(null);
+      $('preview-error').hidden = true;
+      const html = exportHtml(), frame = $('preview-frame');
+      frame.style.maxWidth = editor.Devices.getSelected().get('width') || '100%';
+      frame.onload = () => { frame.onload = null; frame.contentWindow.postMessage({ type: 'eagle-preview', html }, '*'); };
+      frame.src = './preview.html';
+    } else {
+      $('preview-frame').onload = null; $('preview-frame').src = 'about:blank'; editor.refresh();
+    }
     $('preview').textContent = previewing ? '返回编辑' : '预览';
+    $('import-open').disabled = previewing;
+    $('page-options').disabled = previewing;
   };
+  window.addEventListener('message', event => {
+    if (previewing && event.source === $('preview-frame').contentWindow && event.data?.type === 'eagle-preview-error') {
+      $('preview-error').textContent = '页面脚本错误：' + String(event.data.message);
+      $('preview-error').hidden = false;
+    }
+  });
   const additions = {
     text: '<p style="padding:16px;color:#35543a;font-size:16px">写下一段新的文字。</p>',
     button: '<a href="#" style="display:inline-block;margin:16px;padding:12px 24px;background:#345c43;color:#fff;border-radius:6px;text-decoration:none">了解更多 ↗</a>',
@@ -387,11 +403,23 @@
     catch (error) { $('import-error').textContent = `文件读取失败：${error.message}`; }
   };
   $('import-apply').onclick = () => {
-    try { importHtml($('import-code').value, $('file-name').textContent || '导入的页面'); $('import-dialog').close(); }
+    try { importHtml($('import-code').value, $('file-name').textContent || '导入的页面', $('preserve-scripts').checked); $('import-dialog').close(); }
     catch (error) { $('import-error').textContent = error.message; }
   };
-  $('export-open').onclick = () => { $('export-code').value = exportHtml(); $('export-dialog').showModal(); };
-  $('download').onclick = () => {
+  $('code-open').onclick = () => { $('page-menu').hidePopover(); $('export-code').value = exportHtml(); $('code-error').textContent = ''; $('export-dialog').showModal(); };
+  $('code-cancel').onclick = () => $('export-dialog').close();
+  $('code-apply').onclick = async () => {
+    $('code-apply').disabled = true;
+    try {
+      const source = $('export-code').value;
+      if (!source.trim()) throw Error('HTML 不能为空。');
+      await window.prototypeEditor.tools.snapshot('修改 HTML 前');
+      importHtml(source, title, true);
+      $('export-dialog').close(); status('已应用，可从版本恢复。', true);
+    } catch (error) { $('code-error').textContent = error.message; }
+    finally { $('code-apply').disabled = false; }
+  };
+  $('export-open').onclick = () => {
     const url = URL.createObjectURL(new Blob([exportHtml()], { type: 'text/html;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url; link.download = 'edited-page.html'; link.click();
@@ -399,13 +427,16 @@
     status('已生成 edited-page.html，请查看浏览器下载。');
   };
   editor.on('load', () => {
+    documentSupport = EagleEditorDocument.install(editor, $('hidden-sections'));
     importHtml(sample);
     initializing = false;
     $('demo-start').disabled = false; $('demo-import').disabled = false;
     $('undo').disabled = true; $('redo').disabled = true;
     status('示例已就绪 · 试试点选标题，或导入你自己的 HTML');
     // 测试页复用真实导入导出接口，验证模型与最终文件的行为。
-    window.prototypeEditor = { editor, importHtml, exportHtml, moveSelected, getOffset, setOffset, sample };
+    window.prototypeEditor = { editor, importHtml, exportHtml, moveSelected, getOffset, setOffset, sample, documentSupport };
+    window.prototypeEditor.links = EagleEditorLinks.install({ editor, reveal: documentSupport.reveal, status });
+    window.prototypeEditor.inspect = EagleEditorInspect.install({ editor, documentSupport });
     EagleEditorTools.install({ editor, getTitle: () => title, setTitle: value => { title = value; $('project-name').textContent = value; }, activate: dismissWelcome, status }).then(tools => { window.prototypeEditor.tools = tools; });
   });
 })();

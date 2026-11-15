@@ -14,6 +14,7 @@ const timer = setInterval(async () => {
   await check('首次演示不修改示例与历史，支持暂停', () => {
     const before = exportHtml();
     assert(!ui.getElementById('welcome').hidden, '未显示演示');
+    assert(frame.contentWindow.getComputedStyle(ui.getElementById('import-open')).display === 'none' && frame.contentWindow.getComputedStyle(ui.getElementById('demo-import')).display !== 'none', '欢迎页重复导入入口');
     assert(ui.getElementById('export-open').disabled, '演示时导出未禁用');
     ui.getElementById('demo-pause').click();
     assert(ui.getElementById('welcome').classList.contains('is-paused'), '暂停失败');
@@ -59,10 +60,10 @@ const timer = setInterval(async () => {
   await check('导出后重新导入仍保留文字、样式与顺序', () => { const html = exportHtml(); importHtml(html); assert(editor.getWrapper().find('h1')[0].getEl().textContent === '改好的标题 <测试>', '文字往返失败'); assert(exportHtml().includes('42px'), '样式往返失败'); assert(exportHtml().indexOf('<p>') < exportHtml().indexOf('<h1'), '顺序往返失败'); });
   await check('拒绝空文件并保留当前画布', () => { const before = exportHtml(); let rejected = false; try { importHtml('   '); } catch { rejected = true; } assert(rejected && before === exportHtml(), '空文件清空了画布'); });
   await check('移除脚本、事件、危险链接和引擎配置属性', () => { importHtml('<h1 onclick="alert(1)" data-gjs-script="alert(1)">安全内容</h1><script>window.bad=1<\/script><iframe src="https://example.com"></iframe><a href="javascript:alert(1)">链接</a>'); const html = exportHtml(); assert(!/onclick|javascript:|data-gjs-script|<script|<iframe/i.test(html), '执行入口残留'); });
-  await check('手机预览切换', () => { ui.getElementById('device').value = 'Mobile'; ui.getElementById('device').dispatchEvent(new frame.contentWindow.Event('change')); assert(editor.getDevice() === 'Mobile', '设备未切换'); });
+  await check('手机预览切换', async () => { ui.getElementById('device').value = 'Mobile'; ui.getElementById('device').dispatchEvent(new frame.contentWindow.Event('change')); assert(editor.getDevice() === 'Mobile', '设备未切换'); await new Promise(resolve => setTimeout(resolve, 400)); ui.getElementById('device').value = 'Desktop'; ui.getElementById('device').dispatchEvent(new frame.contentWindow.Event('change')); await new Promise(resolve => setTimeout(resolve, 400)); });
   await check('添加元素进入最终导出文件', () => { ui.querySelector('[data-add="card"]').click(); assert(exportHtml().includes('一个新的故事'), '新增元素丢失'); });
-  await check('X/Y 修改位置但保留结构顺序', () => {
-    importHtml('<main><h1>移动标题</h1><p>后续段落</p></main>');
+  await check('X/Y 修改位置但保留结构顺序', async () => {
+    importHtml('<main><h1>移动标题</h1><p>后续段落</p></main>'); await settle();
     editor.select(editor.getWrapper().find('h1')[0]);
     ui.getElementById('offset-x').value = '80'; ui.getElementById('offset-y').value = '-25';
     ui.getElementById('offset-x').dispatchEvent(new frame.contentWindow.Event('change'));
@@ -70,8 +71,9 @@ const timer = setInterval(async () => {
     assert(exportHtml().indexOf('<h1') < exportHtml().indexOf('<p'), '意外改变排列');
   });
   await check('自由位置支持撤销与重做', () => {
-    ui.getElementById('undo').click(); assert(getOffset(editor.getSelected()).x === 0, '撤销位移失败');
-    ui.getElementById('redo').click(); assert(getOffset(editor.getSelected()).x === 80, '重做位移失败');
+    ui.getElementById('undo').click(); assert(getOffset(editor.getWrapper().find('h1')[0]).x === 0, '撤销位移失败');
+    ui.getElementById('redo').click(); assert(getOffset(editor.getWrapper().find('h1')[0]).x === 80, '重做位移失败');
+    editor.select(editor.getWrapper().find('h1')[0]);
   });
   await check('宽高修改进入导出样式并开放缩放手柄', () => {
     for (const [id, value] of [['width', '320px'], ['height', '120px']]) { ui.getElementById(id).value = value; ui.getElementById(id).dispatchEvent(new frame.contentWindow.Event('change')); }
@@ -141,7 +143,7 @@ const timer = setInterval(async () => {
     importHtml(exportHtml()); editor.select(editor.getWrapper().find('section')[0]);
     assert(ui.querySelector('[data-layout="grid"]').getAttribute('aria-pressed') === 'true' && ui.getElementById('opacity').value === '0.5', '高级面板未同步');
     assert(editor.getSelected().getStyle()['grid-template-columns'] === 'repeat(3, 1fr)', '自定义 CSS 往返丢失');
-    assert(exportHtml().includes('12px 24px'), '内边距往返丢失');
+    assert(editor.Canvas.getWindow().getComputedStyle(editor.getSelected().getEl()).padding === '12px 24px', '内边距往返丢失');
     ui.getElementById('css-value').value = ''; ui.getElementById('css-apply').click();
     assert(!editor.getSelected().getStyle()['grid-template-columns'], 'CSS 覆盖无法移除');
   });
@@ -149,7 +151,7 @@ const timer = setInterval(async () => {
     importHtml('<style>.page{color:green}.title{font-size:20px}</style><body id="page-root" class="page" dir="rtl" style="background:#abcdef"><h1 class="title" style="font-size:37px">保留样式</h1></body>');
     const attrs = editor.getWrapper().getAttributes();
     assert(attrs.id === 'page-root' && attrs.class === 'page' && attrs.dir === 'rtl', '根属性丢失');
-    assert(exportHtml().includes('37px') && exportHtml().includes('#abcdef'), '行内样式丢失');
+    assert(exportHtml().includes('37px') && exportHtml().includes('rgb(171, 205, 239)'), '行内样式丢失');
     importHtml(exportHtml());
     assert(editor.getWrapper().getAttributes().class === 'page' && exportHtml().includes('37px'), '往返后样式丢失');
   });
@@ -157,7 +159,7 @@ const timer = setInterval(async () => {
     importHtml('<p>新页面</p>');
     const attrs = editor.getWrapper().getAttributes();
     assert(attrs.class !== 'page' && attrs.dir !== 'rtl' && attrs.id !== 'page-root', '上一页根属性残留');
-    assert(!exportHtml().includes('#abcdef'), '上一页背景残留');
+    assert(!exportHtml().includes('rgb(171, 205, 239)'), '上一页背景残留');
   });
   await check('多行标题可编辑，文字不被解释为 HTML', () => {
     importHtml('<h1>第一行<br>第二行</h1>'); editor.select(editor.getWrapper().find('h1')[0]);
@@ -229,7 +231,7 @@ const timer = setInterval(async () => {
     assert(editor.getSelected().getStyle()['letter-spacing'] === '1.5px', '字间距单位错误');
     assert(exportHtml().includes('Consolas, monospace'), '字体未导出');
     importHtml(exportHtml());
-    assert(editor.getWrapper().find('section')[0].getStyle()['grid-template-columns'] === 'repeat(2, minmax(0, 1fr))', '分列往返丢失');
+    assert(editor.getWrapper().find('section')[0].getStyle()['grid-template-columns'] === 'repeat(2, minmax(0px, 1fr))', '分列往返丢失');
   });
   await check('复制元素、重命名与锁定操作', () => {
     importHtml('<main><p style="color:red">测试</p></main>');
@@ -251,7 +253,243 @@ const timer = setInterval(async () => {
     assert(exportHtml() === before, '快照往返内容变化');
     assert(!editor.UndoManager.hasUndo(), '恢复后留下前一工程的历史');
   });
+  const interactive = `<title>章节测试</title><style>.chapter[hidden]{display:none!important}.future-state{color:rgb(1,2,3)}</style><button data-page="two">下一章</button><section id="one"><h1>总览</h1></section><section id="two" class="chapter" hidden data-step="2"><h2>隐藏标题</h2><input type="checkbox" data-task="2-1"></section><script>window.fixtureRuns=(window.fixtureRuns||0)+1;document.querySelector('[data-page]').onclick=()=>{document.querySelector('#one').hidden=true;document.querySelector('#two').hidden=false};document.querySelector('[data-task]').onchange=e=>localStorage.setItem('eagle-editor-fixture-progress',String(e.target.checked));<\/script>`;
+  await check('保留业务属性，脚本作为文本保存，画布不执行', async () => {
+    importHtml(interactive + '<p data-gjs-script="alert(1)" onclick="alert(1)">清理</p><script src="/external.js"><\/script>', '章节测试', true);
+    await settle(); api.documentSupport.refresh();
+    assert(!editor.Canvas.getWindow().fixtureRuns && !editor.Canvas.getDocument().querySelector('script'), '脚本进入画布');
+    const exported = exportHtml();
+    assert(exported.includes('data-page="two"') && exported.includes('data-task="2-1"'), '业务属性丢失');
+    assert(!new DOMParser().parseFromString(exported, 'text/html').querySelector('[data-gjs-script],[onclick],script[src]'), '执行属性或外链脚本残留');
+    assert(new DOMParser().parseFromString(exported, 'text/html').scripts.length === 1, '内嵌脚本未保留');
+    assert(exported.includes('.future-state'), '动态状态 CSS 丢失');
+  });
+  await check('隐藏章节临时显示、文字修改、撤销重做，导出保留隐藏', async () => {
+    const section = editor.getWrapper().find('#two')[0];
+    const picker = ui.getElementById('hidden-sections');
+    assert([...picker.options].some(option => option.value === section.cid), '缺少隐藏章节入口');
+    picker.value = section.cid; picker.onchange(); await settle();
+    assert(section.getEl().getBoundingClientRect().height > 0, '章节仍不可见');
+    editor.select(section.find('h2')[0]); change('text', '修改后的章节'); await settle();
+    editor.UndoManager.undo(); await settle(); assert(!exportHtml().includes('修改后的章节'), '文字不能撤销');
+    editor.UndoManager.redo(); await settle(); assert(exportHtml().includes('修改后的章节'), '文字不能重做');
+    const doc = new DOMParser().parseFromString(exportHtml(), 'text/html');
+    assert(doc.querySelector('#two').hidden, '临时显示写入导出');
+    assert(!exportHtml().includes('visibility:visible!important'), '临时样式泄漏');
+    picker.value = ''; picker.onchange(); assert(section.getEl().getBoundingClientRect().height === 0, '正常视图未恢复隐藏');
+  });
+  await check('脚本元数据随快照恢复，导出再导入保持内容', async () => {
+    const before = exportHtml(), saved = api.tools.capture();
+    importHtml('<h1>静态新页面</h1>'); assert(!exportHtml().includes('<script'), '旧脚本串入新页面');
+    await api.tools.restore(saved); await settle();
+    assert(exportHtml() === before, '快照丢失脚本或业务属性');
+    importHtml(exportHtml(), '再次导入', true); await settle();
+    assert(exportHtml().includes('修改后的章节') && api.documentSupport.getScripts().length === 1, '往返丢失');
+  });
+  await check('导出文件恢复翻页及进度保存', async () => {
+    // 仅运行本测试生成的固定脚本；用户输入不在这个测试框架中执行。
+    const runtime = document.createElement('iframe');
+    runtime.srcdoc = exportHtml(); document.body.append(runtime);
+    await new Promise(resolve => { runtime.onload = resolve; });
+    const doc = runtime.contentDocument;
+    assert(runtime.contentWindow.fixtureRuns === 1 && doc.querySelector('#two').hidden, '脚本未运行或初始状态变化');
+    doc.querySelector('[data-page]').click(); assert(!doc.querySelector('#two').hidden && doc.querySelector('#one').hidden, '导出翻页失败');
+    doc.querySelector('[data-task]').click(); assert(localStorage.getItem('eagle-editor-fixture-progress') === 'true', '进度未保存');
+    localStorage.removeItem('eagle-editor-fixture-progress'); runtime.remove();
+  });
+  await check('未勾选保留时清理内嵌脚本', () => {
+    importHtml(interactive); assert(!exportHtml().includes('<script'), '默认导入保留了脚本');
+  });
+  await check('属性默认收起，通过更多展开和收起', () => {
+    assert(ui.getElementById('property-panel').hidden, '属性默认展开');
+    ui.getElementById('properties-toggle').click();
+    assert(!ui.getElementById('property-panel').hidden, '更多没有展开属性');
+    ui.getElementById('properties-close').click();
+    assert(ui.getElementById('property-panel').hidden, '属性未收起');
+  });
+  const rightClick = element => { const Event = editor.Canvas.getWindow().MouseEvent; for (const type of ['mousedown', 'mouseup', 'contextmenu']) element.dispatchEvent(new Event(type, { button: 2, bubbles: true, cancelable: true, clientX: 80, clientY: 80 })); };
+  await check('右键嵌套文字选中所属链接，菜单不超出窗口', async () => {
+    importHtml('<a id="source" href="https://example.com"><strong>链接文字</strong> ↗</a><a href="#chapter-target">章节</a><section id="chapter-target" hidden><h2>隐藏章节</h2></section>'); await settle();
+    rightClick(editor.Canvas.getDocument().querySelector('#source strong')); await settle();
+    assert(ui.getElementById('link-menu').matches(':popover-open'), '链接菜单未打开');
+    assert(editor.getSelected().getAttributes().id === 'source', '没有选中所属链接');
+    const rect = ui.getElementById('link-menu').getBoundingClientRect();
+    assert(rect.left >= 0 && rect.right <= frame.contentWindow.innerWidth && rect.bottom <= frame.contentWindow.innerHeight, '菜单越界');
+  });
+  await check('修改链接可取消，危险协议被拒绝', () => {
+    ui.getElementById('link-change').click();
+    ui.getElementById('link-href').value = 'javascript:alert(1)'; ui.getElementById('link-form').requestSubmit();
+    assert(ui.getElementById('link-dialog').open && ui.getElementById('link-error').textContent, '未拒绝脚本协议');
+    ui.getElementById('link-cancel').click();
+    assert(editor.getSelected().getAttributes().href === 'https://example.com', '取消修改了链接');
+  });
+  await check('修改指向支持撤销重做，导出保留嵌套文字', async () => {
+    rightClick(editor.Canvas.getDocument().querySelector('#source')); ui.getElementById('link-change').click();
+    ui.getElementById('link-href').value = 'https://example.org/new'; ui.getElementById('link-form').requestSubmit(); await settle();
+    assert(exportHtml().includes('https://example.org/new'), '修改未导出');
+    editor.UndoManager.undo(); await settle(); assert(exportHtml().includes('href="https://example.com"'), '链接不能撤销');
+    editor.UndoManager.redo(); await settle(); assert(exportHtml().includes('https://example.org/new'), '链接不能重做');
+    assert(exportHtml().includes('<strong>链接文字</strong>'), '嵌套格式丢失');
+  });
+  await check('修改文字进入画布编辑，保留原嵌套结构', async () => {
+    rightClick(editor.Canvas.getDocument().querySelector('#source')); ui.getElementById('link-text').click(); await settle();
+    const el = editor.getWrapper().find('#source')[0].getEl();
+    assert(el.isContentEditable, '没有进入文字编辑');
+    assert(el.querySelector('strong'), '进入编辑时破坏了加粗');
+    editor.Canvas.getBody().dispatchEvent(new (editor.Canvas.getWindow().MouseEvent)('mousedown', { bubbles: true })); await settle(); editor.select(null);
+  });
+  await check('取消链接保留内容和格式，单步撤销恢复', async () => {
+    rightClick(editor.Canvas.getDocument().querySelector('#source')); ui.getElementById('link-unlink').click(); await settle();
+    assert(!editor.getWrapper().find('#source')[0].getAttributes().href, '取消后仍有链接');
+    assert(exportHtml().includes('<strong>链接文字</strong>'), '取消时丢失内容');
+    editor.UndoManager.undo(); await settle(); assert(editor.getWrapper().find('#source')[0].getAttributes().href === 'https://example.org/new', '取消不能撤销');
+  });
+  await check('页内链接直接定位隐藏目标，导出仍保留隐藏状态', async () => {
+    rightClick(editor.Canvas.getDocument().querySelector('a[href="#chapter-target"]')); ui.getElementById('link-open').click(); await settle();
+    assert(editor.getSelected().getAttributes().id === 'chapter-target' && editor.getSelected().getEl().getBoundingClientRect().height > 0, '未显示目标章节');
+    assert(new DOMParser().parseFromString(exportHtml(), 'text/html').querySelector('#chapter-target').hidden, '临时显示污染导出');
+    assert(!editor.Canvas.getFrameEl().sandbox.contains('allow-scripts'), '画布脚本被放开');
+  });
+  await check('章节入口过滤进度装饰，无隐藏内容时自动收起', async () => {
+    importHtml('<style>.dot{display:none}</style><span class="dot"></span><section hidden id="chapter-content"><h2>可编辑章节</h2></section>'); await settle(); api.documentSupport.refresh();
+    const picker = ui.getElementById('hidden-sections');
+    assert(!picker.hidden && picker.options.length === 2, '装饰节点进入章节列表');
+    importHtml('<h1>普通页面</h1>'); await settle(); api.documentSupport.refresh();
+    assert(picker.hidden, '无章节时仍占用工具栏');
+  });
+  await check('编辑元素与右键共用菜单，按对象显示操作', async () => {
+    importHtml('<h1>标题</h1><a href="https://example.com">链接</a><img alt="图片" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">'); await settle();
+    const open = selector => { editor.select(editor.getWrapper().find(selector)[0]); ui.getElementById('element-menu-open').click(); };
+    open('h1');
+    assert(ui.getElementById('link-menu').matches(':popover-open') && !ui.getElementById('link-text').hidden && ui.getElementById('link-change').hidden, '文字菜单不匹配');
+    ui.getElementById('element-menu-open').click(); assert(!ui.getElementById('link-menu').matches(':popover-open'), '重复点击不能收起');
+    open('a'); assert(!ui.getElementById('link-change').hidden && !ui.getElementById('link-unlink').hidden, '链接操作丢失');
+    open('img'); assert(!ui.getElementById('replace-image').hidden && ui.getElementById('link-text').hidden, '图片操作不匹配');
+    ui.getElementById('inspect-open').click(); assert(ui.getElementById('inspect-dialog').open && !ui.getElementById('link-menu').matches(':popover-open'), '高级编辑未打开或菜单残留');
+    ui.getElementById('inspect-dialog').close();
+    editor.select(null); assert(ui.getElementById('selection-actions').hidden, '无选择仍显示编辑入口');
+  });
+  await check('普通文字与图片右键菜单按对象显示', async () => {
+    rightClick(editor.Canvas.getDocument().querySelector('h1')); await settle();
+    assert(!ui.getElementById('link-text').hidden && ui.getElementById('link-open').hidden, '文字出现链接操作');
+    rightClick(editor.Canvas.getDocument().querySelector('img')); await settle();
+    assert(!ui.getElementById('replace-image').hidden && ui.getElementById('link-text').hidden, '图片菜单不匹配');
+    ui.getElementById('link-menu').hidePopover();
+  });
+  await check('共用菜单修改嵌套链接指向，锁定元素仍阻止修改', async () => {
+    const saved = api.tools.capture();
+    importHtml('<a href="https://example.com"><strong id="nested">链接文字</strong></a>'); await settle();
+    const nested = editor.getWrapper().find('#nested')[0]; editor.select(nested);
+    ui.getElementById('element-menu-open').click(); ui.getElementById('link-change').click();
+    ui.getElementById('link-href').value = '#chapter'; ui.getElementById('link-form').requestSubmit();
+    assert(nested.parent().getAttributes().href === '#chapter' && !nested.getAttributes().href, '链接指向写到了子元素');
+    editor.select(nested); ui.getElementById('lock-element').click();
+    ui.getElementById('element-menu-open').click();
+    assert(ui.getElementById('link-change').disabled && ui.getElementById('link-text').disabled, '锁定后仍可修改');
+    ui.getElementById('link-menu').hidePopover(); await api.tools.restore(saved); await settle();
+  });
+  await check('HTML 编辑取消不改页面，空内容不能应用', async () => {
+    const before = exportHtml(); ui.getElementById('code-open').click();
+    assert(!ui.getElementById('export-code').readOnly && ui.getElementById('export-code').value === before, '代码不可编辑');
+    ui.getElementById('export-code').value = ''; await ui.getElementById('code-apply').onclick();
+    assert(ui.getElementById('export-dialog').open && exportHtml() === before, '空 HTML 清空了页面');
+    ui.getElementById('code-cancel').click(); assert(exportHtml() === before, '取消改变了页面');
+  });
+  await check('整页 HTML 应用保留样式与脚本，并可从版本恢复', async () => {
+    const before = exportHtml(); ui.getElementById('code-open').click();
+    ui.getElementById('export-code').value = '<title>代码编辑</title><style>h1{color:rgb(10,20,30)}</style><h1 data-step="1">改好的整页</h1><script>window.codeExample=1<\/script>';
+    await ui.getElementById('code-apply').onclick(); await settle();
+    assert(!ui.getElementById('export-dialog').open && exportHtml().includes('改好的整页') && exportHtml().includes('window.codeExample=1'), '整页应用丢失内容');
+    assert(!editor.Canvas.getWindow().codeExample, '脚本在编辑画布执行');
+    await ui.getElementById('versions-open').onclick();
+    assert(ui.getElementById('version-list').firstChild.textContent.startsWith('修改 HTML 前'), '缺少自动版本');
+    await ui.getElementById('version-list').firstChild.onclick(); await settle();
+    assert(exportHtml() === before, '无法恢复代码修改前的页面');
+  });
+  await check('保留脚本依赖的 reset 标识，同时清理执行属性', () => {
+    importHtml('<button id="reset" onclick="alert(1)">重置</button><input name="reset"><script>document.getElementById("reset").addEventListener("click",()=>{});<\/script>', '标识保留', true);
+    const doc = new DOMParser().parseFromString(exportHtml(), 'text/html');
+    assert(doc.getElementById('reset') && doc.querySelector('input[name="reset"]'), '业务标识被清理');
+    assert(!doc.querySelector('[onclick]') && !editor.Canvas.getDocument().querySelector('script'), '画布出现执行入口');
+  });
+  await check('交互预览运行脚本、切换章节、隔离主站及临时存储', async () => {
+    const source = `<h1>交互测试</h1><button id="next">下一页</button><section id="chapter" hidden>第二页</section><script>
+      document.getElementById('next').onclick=()=>document.getElementById('chapter').hidden=false;
+      document.getElementById('next').click();localStorage.setItem('preview-test','1');
+      let isolated=false;try{parent.document.body;}catch{isolated=true;}
+      fetch('/preview-network-probe').then(()=>false,()=>true).then(blocked=>parent.postMessage({type:'preview-fixture',isolated,blocked,chapter:!document.getElementById('chapter').hidden,value:localStorage.getItem('preview-test')},'*'));
+    <\/script>`;
+    importHtml(source, '交互测试', true); await settle(); const before = exportHtml();
+    const response = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => { frame.contentWindow.removeEventListener('message', handler); reject(Error('预览脚本未返回结果')); }, 5000);
+      function handler(event) { if (event.source === ui.getElementById('preview-frame').contentWindow && event.data?.type === 'preview-fixture') { clearTimeout(timeout); frame.contentWindow.removeEventListener('message', handler); resolve(event.data); } }
+      frame.contentWindow.addEventListener('message', handler);
+    });
+    editor.setDevice('Mobile');
+    ui.getElementById('preview').click();
+    const result = await response;
+    assert(Math.round(ui.getElementById('preview-frame').getBoundingClientRect().width) === 390, '交互预览未沿用手机尺寸：' + ui.getElementById('preview-frame').getBoundingClientRect().width);
+    assert(ui.getElementById('import-open').disabled && ui.getElementById('page-options').disabled, '预览仍可修改源页面');
+    assert(result.chapter && result.value === '1', '预览交互或临时存储失败');
+    assert(result.isolated && result.blocked, '预览未隔离主站或网络请求');
+    assert(!frame.contentWindow.localStorage.getItem('preview-test'), '预览写入主站存储');
+    assert(ui.getElementById('preview-frame').sandbox.value === 'allow-scripts', '预览具有额外权限');
+    ui.getElementById('preview').click();
+    assert(ui.getElementById('runtime-preview').hidden && before === exportHtml(), '预览污染编辑内容');
+    assert(!ui.getElementById('import-open').disabled && !ui.getElementById('page-options').disabled, '返回编辑后操作未恢复');
+    editor.setDevice('Desktop');
+  });
+  const chapterSource = `<style>body{color:rgb(20,30,40)}.action{padding:12px}</style><button id="continue" class="action">继续学习</button><nav><button data-page="1">第一章</button><button data-page="3">第三章</button></nav><section id="step-1"><h1>第一章</h1></section><section id="step-3" hidden><h1>第三章</h1></section><script>
+    let page=0,calls=0;
+    function show(n){page=n;calls++;document.getElementById('step-1').hidden=n!==1;document.getElementById('step-3').hidden=n!==3;}
+    document.querySelectorAll('button[data-page]').forEach(b=>b.addEventListener('click',()=>show(Number(b.dataset.page))));
+    document.getElementById('continue').addEventListener('click',()=>show(1));
+    window.addEventListener('DOMContentLoaded',()=>{document.getElementById('continue').click();parent.postMessage({type:'inspect-fixture',page,calls},'*');});
+  <\/script>`;
+  await check('高级编辑展示元素、全部属性、样式和脚本引用', async () => {
+    importHtml(chapterSource, '章节高级编辑', true); await settle();
+    editor.select(editor.getWrapper().find('#continue')[0]); ui.getElementById('inspect-open').click();
+    assert(ui.getElementById('inspect-dialog').open, '详情未打开');
+    assert(ui.getElementById('inspect-html').value.includes('继续学习') && JSON.parse(ui.getElementById('inspect-attributes').value).id === 'continue', '元素信息缺失');
+    assert(ui.getElementById('inspect-css').value.includes('.action') && ui.getElementById('inspect-computed').value.includes('padding'), '样式信息缺失');
+    assert(ui.getElementById('inspect-scripts').textContent.includes('引用行'), '没有定位脚本引用');
+    assert(ui.getElementById('inspect-page').options.length === 3, '章节未列出');
+    ui.getElementById('inspect-edit').click();
+    const field = ui.getElementById('export-code');
+    assert(ui.getElementById('export-dialog').open && field.value.slice(field.selectionStart, field.selectionEnd).includes('继续学习'), '没有定位元素代码');
+    ui.getElementById('code-cancel').click();
+  });
+  await check('直观设置章节可撤销、重做、保存恢复和往返导入', async () => {
+    const button = editor.getWrapper().find('#continue')[0]; editor.select(button); api.inspect.open();
+    ui.getElementById('inspect-page').value = '3'; ui.getElementById('inspect-apply').click();
+    assert(button.getAttributes()['data-eagle-click-page'] === '3', '跳转未写入模型');
+    editor.UndoManager.undo(); assert(!button.getAttributes()['data-eagle-click-page'], '撤销失败');
+    editor.UndoManager.redo(); assert(button.getAttributes()['data-eagle-click-page'] === '3', '重做失败');
+    const saved = api.tools.capture(); await api.tools.restore(saved); await settle();
+    const exported = exportHtml(); importHtml(exported, '再次导入', true); await settle();
+    const doc = new DOMParser().parseFromString(exportHtml(), 'text/html');
+    assert(doc.querySelectorAll('script[data-eagle-actions]').length === 1 && api.documentSupport.getScripts().length === 1, '行为脚本重复或原脚本丢失');
+    assert(doc.getElementById('continue').getAttribute('data-eagle-click-page') === '3', '往返丢失跳转');
+    assert(!editor.Canvas.getDocument().querySelector('script'), '脚本进入编辑画布');
+  });
+  await check('隔离预览实际跳到指定章节，只触发一次', async () => {
+    const response = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => { frame.contentWindow.removeEventListener('message', handler); reject(Error('未收到章节结果')); }, 5000);
+      function handler(event) { if (event.source === ui.getElementById('preview-frame').contentWindow && event.data?.type === 'inspect-fixture') { clearTimeout(timeout); frame.contentWindow.removeEventListener('message', handler); resolve(event.data); } }
+      frame.contentWindow.addEventListener('message', handler);
+    });
+    ui.getElementById('preview').click(); const result = await response;
+    ui.getElementById('preview').click();
+    assert(result.page === 3 && result.calls === 1, '执行了原跳转或重复触发');
+  });
+  await check('恢复原行为移除覆盖；不保留交互时清理行为脚本', async () => {
+    const before = exportHtml(); editor.select(editor.getWrapper().find('#continue')[0]); api.inspect.open();
+    ui.getElementById('inspect-page').value = ''; ui.getElementById('inspect-apply').click();
+    assert(!exportHtml().includes('data-eagle-click-page') && !exportHtml().includes('data-eagle-actions'), '原有行为未恢复');
+    importHtml(before, '静态导入'); await settle();
+    assert(!exportHtml().includes('<script') && !exportHtml().includes('data-eagle-click-page'), '静态导入仍带行为');
+  });
   document.getElementById('summary').textContent = `${passed} 项通过，${failed} 项失败`;
 }, 200);
-setTimeout(() => { if (!site.contentWindow.prototypeEditor) { clearInterval(timer); document.getElementById('summary').textContent = '失败：30 秒内未加载编辑引擎，请检查本地 vendor 资源。'; } }, 30000);
+setTimeout(() => { if (!site.contentWindow.prototypeEditor) { clearInterval(timer); document.getElementById('summary').textContent = '失败：30 秒内未加载编辑引擎，请检查 CDN 网络。'; } }, 30000);
 </script></html>

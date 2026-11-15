@@ -82,3 +82,26 @@ dialog{border:2px solid #191a17;box-shadow:8px 8px 0 #191a17}dialog::backdrop{ba
 #element-tools{border:0;padding:0;margin:12px 0}#element-tools .fields{margin:8px 0}#version-list{display:grid;gap:8px;margin-top:20px}#version-list button{text-align:left}#save-state{color:#514d44}#image-tools{margin-bottom:16px}
 
 .storage-loading .workspace,.storage-loading .actions{pointer-events:none;visibility:hidden}
+.script-option{display:flex;align-items:center;gap:8px}.script-option input{width:auto}#hidden-sections{max-width:220px;min-width:90px}
+.workspace{grid-template-columns:minmax(320px,1fr)}.workspace.with-layers{grid-template-columns:176px minmax(320px,1fr)}
+.workspace.with-properties{grid-template-columns:minmax(320px,1fr) 268px}.workspace.with-layers.with-properties{grid-template-columns:176px minmax(320px,1fr) 268px}
+.right-panel>.panel-heading{margin-bottom:16px}.panel-heading button{border:0;padding:0 5px;font-size:20px}
+#link-menu{position:fixed;inset:auto;margin:0;padding:5px;width:178px;border:2px solid #191a17;background:#f6f0e2;box-shadow:5px 5px 0 #191a17}
+#link-menu button{display:block;width:100%;border:0;text-align:left;background:transparent;padding:10px 12px}
+#link-menu button:hover,#link-menu button:focus-visible{background:#191a17;color:#f6f0e2}#inspect-open{border-top:1px solid #b7ae9d!important}
+#link-dialog{width:min(440px,90vw)}#link-dialog label{margin-top:20px}#link-error{color:#b64036}
+#page-menu{inset:64px 18px auto auto;margin:0;padding:6px;border:2px solid #191a17;background:#f6f0e2;box-shadow:5px 5px 0 #191a17}
+#page-menu button{display:block;width:150px;border:0;text-align:left;background:transparent}
+#selection-actions{margin-right:auto}.canvas-toolbar #hidden-sections{width:auto;margin:0;font-size:14px;padding:6px}
+.gjs-toolbar{display:none!important}.element-options{padding:10px 0;margin-bottom:16px}
+#export-dialog{width:min(1100px,94vw)}#export-code{height:65vh;tab-size:2}#code-error{color:#b64036}
+#inspect-dialog{width:min(900px,94vw);max-height:88vh;overflow:auto}#inspect-dialog h3{font-size:18px;overflow-wrap:anywhere}
+#inspect-dialog details{border-top:1px solid #b7ae9d;padding:14px 0}#inspect-dialog summary{font-size:16px;cursor:pointer}
+#inspect-dialog textarea{width:100%;height:180px;margin:14px 0;font:14px/1.5 Consolas,monospace}#inspect-dialog #inspect-html{height:110px}
+#inspect-action{display:flex;align-items:end;gap:16px;margin:24px 0}#inspect-action label{flex:1}#inspect-action button{white-space:nowrap}#inspect-error{color:#b64036}
+#runtime-preview{flex:1;min-height:0;display:flex;flex-direction:column;margin:12px;border:1px solid #191a17;background:#fff}
+#preview-frame{width:100%;height:100%;flex:1;min-height:0;margin-inline:auto;border:0;background:#fff}#preview-error{padding:10px 16px;background:#f6e4da;color:#9a281c}
+.workspace.is-previewing{grid-template-columns:minmax(0,1fr)}.is-previewing #editor,.is-previewing .canvas-toolbar,.is-previewing .left-panel,.is-previewing .right-panel{display:none!important}
+@media(max-width:780px){.workspace.with-layers{grid-template-columns:minmax(320px,1fr)}.workspace.with-properties,.workspace.with-layers.with-properties{grid-template-columns:minmax(320px,1fr) 240px}}
+
+.is-welcoming .actions #import-open{display:none}

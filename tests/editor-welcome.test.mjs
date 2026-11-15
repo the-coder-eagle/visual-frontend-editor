@@ -24,7 +24,7 @@ test('演示按钮控制暂停、试用、导入；无效导入不关闭演示',
   const document = { getElementById: node, querySelectorAll: () => [], addEventListener() {}, body: { classList: classes() } };
   const grapesjs = { init: () => engine };
   vm.runInNewContext(await readFile(new URL('../app.js', import.meta.url), 'utf8'), {
-    document, grapesjs, window: { grapesjs, DOMPurify: {} },
+    document, grapesjs, window: { grapesjs, DOMPurify: {}, addEventListener() {} },
   });
   node('demo-pause').click();
   assert.equal(node('welcome').classList.contains('is-paused'), true);

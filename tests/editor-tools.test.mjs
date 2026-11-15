@@ -47,4 +47,5 @@ test('恢复工程后继续自动保存；版本快照恢复标题和组件并�
  node('version-name').value='定稿';await node('save-project').onclick();assert.equal(db.get('versions')[0].label,'定稿');
  project={pages:['another']};events.update();await tools.autosave.flush();await node('version-list').children[0].onclick();await tools.autosave.flush();
  assert.equal(project.pages[0],'changed');assert.equal(title,'已有作品');assert.equal(cleared,2);assert.equal(tools.autosave.dirty(),false);
+ await tools.snapshot('修改 HTML 前');assert.equal(db.get('versions')[0].label,'修改 HTML 前');assert.equal(db.get('versions')[0].project.pages[0],'changed');
 });
