@@ -1,0 +1,61 @@
+# 画页 · 前端可视化编辑器
+
+导入 AI 生成的单页 HTML，在浏览器里微调文字、样式和布局，再导出继续开发。
+
+[在线体验](https://eaglecoder.cn/#editor) · [作者](https://github.com/the-coder-eagle)
+
+## 本地运行
+
+无需安装 npm 依赖。依赖库已包含在 `vendor/` 中。
+
+```sh
+python -m http.server 8787 --bind 127.0.0.1
+```
+
+打开 http://127.0.0.1:8787/ 。项目保存到当前浏览器、当前站点的 IndexedDB；更换浏览器或端口不会同步这些内容。导出 HTML 可独立保存。
+
+## 功能
+
+- 导入单个 HTML 文件或粘贴 HTML，导出带内嵌 CSS 的单页。
+- 常用／高级面板、文字排版、横排／竖排／分列、间距、外观和自定义 CSS。
+- 自由移动、缩放、键盘微调、结构排序、撤销重做。
+- 桌面／手机画布预览，图层重命名与锁定、复制元素、复制粘贴覆盖样式。
+- 自动保存、恢复工程、命名快照，最多保留最近 8 份快照。
+- 导入或替换 PNG、JPEG、WebP 图片，单张不超过 5 MB，以 Data URL 随 HTML 导出。
+- 首次打开的交互演示，可暂停、试用或直接导入。
+
+自由移动保留元素原来的布局占位，可能产生重叠。桌面和手机预览共用样式；修改后应检查两种宽度。
+
+## 支持范围与隔离
+
+支持单页 HTML 和内嵌 CSS。导入会清理脚本、事件属性、嵌入页面和外链样式。画布使用禁脚本 sandbox 和 CSP，文件在浏览器内处理，没有文件上传接口或数据库服务。
+
+外部图片网址仍可能发起网络请求。关联的本地图片和外部 CSS 不会自动打包。GrapesJS 解析与导出可能改变结构、选择器和格式。本项目不编译或回写 React/Vue 工程，不支持多页面或 ZIP 项目导入。
+
+自行部署到其他主站前，应验证该站点的 iframe 权限、CSP、文件下载与不可信内容隔离；不要仅依赖 DOMPurify。
+
+## 检查
+
+安装 Node.js 后运行：
+
+```sh
+node --check app.js
+node --check tools.js
+node --test tests/*.test.mjs
+```
+
+浏览器回归入口：http://127.0.0.1:8787/tests.html 。测试使用独立的 IndexedDB 数据库。
+
+Node 测试覆盖自动保存并发、存储失败、快照恢复、图片签名、复制逻辑及演示交互。`tests.html` 覆盖真实编辑器导入、编辑、布局、撤销、导出再导入等操作；完整浏览器验收仍待完成，Node 测试不代替界面验收。
+
+## 文件
+
+- `index.html`、`style.css`：界面与样式。
+- `app.js`：编辑器初始化、清理、属性面板、导入导出。
+- `tools.js`：保存、快照、图片与图层操作。
+- `tests/`：Node 回归测试；`tests.html`：浏览器回归测试。
+- `vendor/`：GrapesJS 0.23.9、DOMPurify 3.4.17 及各自许可证。
+
+## 许可证
+
+本项目原创代码使用 [MIT](LICENSE)。`vendor/` 内第三方代码按各自许可证分发，见 [GrapesJS 许可证](vendor/grapesjs-LICENSE) 和 [DOMPurify 许可证](vendor/dompurify-LICENSE)。

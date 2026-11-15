@@ -1,0 +1,257 @@
+<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><title>原型功能验证</title><style>body{font:15px/1.8 sans-serif;padding:24px;background:#f5f7ef;color:#24412f}iframe{width:1200px;height:760px;border:1px solid #ccc}li.fail{color:#b42b2b}</style><h1>导入 / 编辑 / 导出回归测试</h1><p id="summary">等待编辑器加载…</p><ol id="results"></ol><iframe src="./index.html?test=1" id="app"></iframe><script>
+const site = document.getElementById('app');
+const timer = setInterval(async () => {
+  const frame = site;
+  const api = frame?.contentWindow.prototypeEditor;
+  if (!api?.tools) return;
+  clearInterval(timer);
+  const { editor, importHtml, exportHtml, moveSelected, getOffset } = api;
+  const ui = frame.contentDocument;
+  let passed = 0, failed = 0;
+  const settle = () => new Promise(resolve => setTimeout(resolve, 60));
+  const check = async (name, run) => { const li = document.createElement('li'); try { await run(); li.textContent = '通过 · ' + name; passed++; } catch (e) { li.textContent = '失败 · ' + name + '：' + e.message; li.className = 'fail'; failed++; } document.getElementById('results').append(li); await settle(); };
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  await check('首次演示不修改示例与历史，支持暂停', () => {
+    const before = exportHtml();
+    assert(!ui.getElementById('welcome').hidden, '未显示演示');
+    assert(ui.getElementById('export-open').disabled, '演示时导出未禁用');
+    ui.getElementById('demo-pause').click();
+    assert(ui.getElementById('welcome').classList.contains('is-paused'), '暂停失败');
+    ui.getElementById('demo-pause').click();
+    assert(!ui.getElementById('welcome').classList.contains('is-paused'), '继续失败');
+    assert(before === exportHtml() && !editor.UndoManager.hasUndo(), '演示污染页面或历史');
+  });
+  await check('取消导入和无效导入保留欢迎演示', () => {
+    ui.getElementById('demo-import').click();
+    assert(ui.getElementById('import-dialog').open, '未打开导入');
+    ui.getElementById('import-dialog').close();
+    try { importHtml(' '); } catch {}
+    assert(!ui.getElementById('welcome').hidden, '演示被提前关闭');
+  });
+  await check('试一试进入真实编辑器，保留原示例', () => {
+    const before = exportHtml();
+    ui.getElementById('demo-start').click();
+    assert(ui.getElementById('welcome').hidden && !ui.getElementById('export-open').disabled, '未进入编辑');
+    assert(editor.getSelected().get('tagName') === 'h1', '未选中标题');
+    assert(before === exportHtml(), '试用改变了页面');
+  });
+  await check('导入中文标题、嵌套内容和 CSS', () => {
+    importHtml('<title>测试 & 页面</title><style>.hero{color:rgb(20,60,30);padding:24px}@media(max-width:480px){.hero{padding:12px}}</style><main><h1 class="hero">原标题</h1><p>保留<strong>嵌套</strong>文字</p><a href="#test">链接</a></main>');
+    assert(editor.getWrapper().find('h1')[0].getEl().textContent === '原标题', '标题丢失');
+    assert(exportHtml().includes('480px'), '响应式规则丢失');
+  });
+  await check('通过真实属性面板修改文字与字号', async () => {
+    editor.select(editor.getWrapper().find('h1')[0]);
+    ui.getElementById('text').value = '改好的标题 <测试>';
+    ui.getElementById('text').dispatchEvent(new frame.contentWindow.Event('change'));
+    await settle();
+    ui.getElementById('font-size').value = '42';
+    ui.getElementById('font-size').dispatchEvent(new frame.contentWindow.Event('change'));
+    assert(editor.getSelected().getEl().textContent === '改好的标题 <测试>', '文字修改失败');
+    assert(exportHtml().includes('42px'), '样式未导出');
+  });
+  await check('撤销和重做样式修改', () => {
+    ui.getElementById('undo').click(); assert(!exportHtml().includes('42px'), '撤销无效');
+    ui.getElementById('redo').click(); assert(exportHtml().includes('42px'), '重做无效');
+  });
+  await check('嵌套文本不会被整段覆盖', () => { editor.select(editor.getWrapper().find('p')[0]); assert(ui.getElementById('text').disabled, '嵌套内容编辑未限制'); assert(exportHtml().includes('<strong>嵌套</strong>'), '嵌套丢失'); });
+  await check('向后移动后真实改变导出顺序', () => { editor.select(editor.getWrapper().find('h1')[0]); moveSelected(1); const html = exportHtml(); assert(html.indexOf('<p>') < html.indexOf('<h1'), '排序未改变'); });
+  await check('导出后重新导入仍保留文字、样式与顺序', () => { const html = exportHtml(); importHtml(html); assert(editor.getWrapper().find('h1')[0].getEl().textContent === '改好的标题 <测试>', '文字往返失败'); assert(exportHtml().includes('42px'), '样式往返失败'); assert(exportHtml().indexOf('<p>') < exportHtml().indexOf('<h1'), '顺序往返失败'); });
+  await check('拒绝空文件并保留当前画布', () => { const before = exportHtml(); let rejected = false; try { importHtml('   '); } catch { rejected = true; } assert(rejected && before === exportHtml(), '空文件清空了画布'); });
+  await check('移除脚本、事件、危险链接和引擎配置属性', () => { importHtml('<h1 onclick="alert(1)" data-gjs-script="alert(1)">安全内容</h1><script>window.bad=1<\/script><iframe src="https://example.com"></iframe><a href="javascript:alert(1)">链接</a>'); const html = exportHtml(); assert(!/onclick|javascript:|data-gjs-script|<script|<iframe/i.test(html), '执行入口残留'); });
+  await check('手机预览切换', () => { ui.getElementById('device').value = 'Mobile'; ui.getElementById('device').dispatchEvent(new frame.contentWindow.Event('change')); assert(editor.getDevice() === 'Mobile', '设备未切换'); });
+  await check('添加元素进入最终导出文件', () => { ui.querySelector('[data-add="card"]').click(); assert(exportHtml().includes('一个新的故事'), '新增元素丢失'); });
+  await check('X/Y 修改位置但保留结构顺序', () => {
+    importHtml('<main><h1>移动标题</h1><p>后续段落</p></main>');
+    editor.select(editor.getWrapper().find('h1')[0]);
+    ui.getElementById('offset-x').value = '80'; ui.getElementById('offset-y').value = '-25';
+    ui.getElementById('offset-x').dispatchEvent(new frame.contentWindow.Event('change'));
+    assert(getOffset(editor.getSelected()).x === 80 && getOffset(editor.getSelected()).y === -25, '位移错误');
+    assert(exportHtml().indexOf('<h1') < exportHtml().indexOf('<p'), '意外改变排列');
+  });
+  await check('自由位置支持撤销与重做', () => {
+    ui.getElementById('undo').click(); assert(getOffset(editor.getSelected()).x === 0, '撤销位移失败');
+    ui.getElementById('redo').click(); assert(getOffset(editor.getSelected()).x === 80, '重做位移失败');
+  });
+  await check('宽高修改进入导出样式并开放缩放手柄', () => {
+    for (const [id, value] of [['width', '320px'], ['height', '120px']]) { ui.getElementById(id).value = value; ui.getElementById(id).dispatchEvent(new frame.contentWindow.Event('change')); }
+    const resize = { component: editor.getSelected() }; editor.trigger('component:resize:init', resize);
+    assert(resize.resizable.br, '右下角缩放未启用');
+    assert(exportHtml().includes('320px') && exportHtml().includes('120px'), '尺寸没有保存');
+  });
+  await check('方向键微调且不拦截输入框光标', () => {
+    const key = new frame.contentWindow.KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true, cancelable: true });
+    ui.body.dispatchEvent(key); assert(getOffset(editor.getSelected()).x === 90, '快捷移动失败');
+    ui.getElementById('text').dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert(getOffset(editor.getSelected()).x === 90, '输入文字时发生位移');
+  });
+  await check('导出再导入保留自由位置和尺寸', () => {
+    importHtml(exportHtml()); const heading = editor.getWrapper().find('h1')[0]; editor.select(heading);
+    assert(getOffset(heading).x === 90 && getOffset(heading).y === -25, '位移往返丢失');
+    assert(heading.getStyle().width === '320px' && heading.getStyle().height === '120px', '尺寸往返丢失');
+  });
+  await check('归零偏移且保留原有旋转', () => {
+    editor.getSelected().addStyle({ transform: 'rotate(15deg) translateX(50px) translateY(20px)' });
+    ui.getElementById('reset-offset').click();
+    assert(getOffset(editor.getSelected()).x === 0 && getOffset(editor.getSelected()).y === 0, '未归零');
+    assert(editor.getSelected().getStyle().transform.includes('rotate(15deg)'), '原有旋转丢失');
+  });
+  const change = (id, value) => { ui.getElementById(id).value = value; ui.getElementById(id).dispatchEvent(new frame.contentWindow.Event('change')); };
+  await check('高级入口可见，默认保持常用界面', () => {
+    assert(ui.getElementById('advanced-properties').hidden, '高级内容默认展开');
+    ui.getElementById('advanced-toggle').click();
+    assert(!ui.getElementById('advanced-properties').hidden && ui.getElementById('basic-properties').hidden, '高级切换失败');
+    assert(ui.getElementById('advanced-toggle').getAttribute('aria-pressed') === 'true', '切换状态错误');
+    ui.getElementById('basic-toggle').click();
+    assert(!ui.getElementById('basic-properties').hidden, '无法回到常用');
+  });
+  await check('图层按需显示，添加元素只有一个入口', () => {
+    assert(ui.getElementById('layer-panel').hidden, '图层默认展开');
+    ui.getElementById('layers-toggle').click();
+    assert(!ui.getElementById('layer-panel').hidden, '图层无法打开');
+    ui.getElementById('layers-toggle').click();
+    assert(ui.getElementById('layer-panel').hidden, '图层无法关闭');
+    assert(ui.querySelectorAll('[popovertarget="add-menu"]').length === 1, '添加入口未合并');
+  });
+  await check('高级布局与外观写入模型，保留已有内容', async () => {
+    importHtml('<main><section><p>第一项</p><p>第二项</p></section></main>');
+    await settle();
+    editor.select(editor.getWrapper().find('section')[0]);
+    ui.querySelector('[data-layout="column"]').click(); change('gap', '24px');
+    change('padding', '12px 24px'); change('border', '1px solid #dce2db'); change('shadow', '0 8px 24px #0002'); await settle(); change('opacity', '0.5');
+    const style = editor.getSelected().getStyle();
+    assert(style.display === 'flex' && style['flex-direction'] === 'column' && style.gap === '24px', '布局未保存');
+    assert(style.opacity === '0.5' && style.padding === '12px 24px' && style.border === '1px solid #dce2db', '外观值或单位错误');
+    assert(exportHtml().includes('第二项') && exportHtml().includes('box-shadow'), '内容或阴影丢失');
+  });
+  await check('高级属性撤销重做与清空覆盖', () => {
+    ui.getElementById('undo').click(); assert(!editor.getSelected().getStyle().opacity, '透明度撤销失败');
+    ui.getElementById('redo').click(); assert(editor.getSelected().getStyle().opacity === '0.5', '透明度重做失败');
+    change('gap', ''); assert(!editor.getSelected().getStyle().gap, '清空没有移除覆盖');
+  });
+  await check('自定义 CSS 支持网格并拒绝无效值', () => {
+    ui.querySelector('[data-layout="grid"]').click(); change('css-property', 'grid-template-columns');
+    ui.getElementById('css-value').value = 'repeat(3, 1fr)'; ui.getElementById('css-apply').click();
+    assert(editor.getSelected().getStyle()['grid-template-columns'] === 'repeat(3, 1fr)', '网格属性未应用');
+    ui.getElementById('css-value').value = 'invalid-grid'; ui.getElementById('css-apply').click();
+    assert(editor.getSelected().getStyle()['grid-template-columns'] === 'repeat(3, 1fr)', '无效值覆盖了有效属性');
+    assert(ui.getElementById('css-message').textContent.includes('无效'), '没有错误反馈');
+  });
+  await check('高级修改导出再导入，选择元素同步显示', () => {
+    importHtml(exportHtml()); editor.select(editor.getWrapper().find('section')[0]);
+    assert(ui.querySelector('[data-layout="grid"]').getAttribute('aria-pressed') === 'true' && ui.getElementById('opacity').value === '0.5', '高级面板未同步');
+    assert(editor.getSelected().getStyle()['grid-template-columns'] === 'repeat(3, 1fr)', '自定义 CSS 往返丢失');
+    assert(exportHtml().includes('12px 24px'), '内边距往返丢失');
+    ui.getElementById('css-value').value = ''; ui.getElementById('css-apply').click();
+    assert(!editor.getSelected().getStyle()['grid-template-columns'], 'CSS 覆盖无法移除');
+  });
+  await check('导入保留 body 属性和行内样式', () => {
+    importHtml('<style>.page{color:green}.title{font-size:20px}</style><body id="page-root" class="page" dir="rtl" style="background:#abcdef"><h1 class="title" style="font-size:37px">保留样式</h1></body>');
+    const attrs = editor.getWrapper().getAttributes();
+    assert(attrs.id === 'page-root' && attrs.class === 'page' && attrs.dir === 'rtl', '根属性丢失');
+    assert(exportHtml().includes('37px') && exportHtml().includes('#abcdef'), '行内样式丢失');
+    importHtml(exportHtml());
+    assert(editor.getWrapper().getAttributes().class === 'page' && exportHtml().includes('37px'), '往返后样式丢失');
+  });
+  await check('导入另一页不携带上一页根属性', () => {
+    importHtml('<p>新页面</p>');
+    const attrs = editor.getWrapper().getAttributes();
+    assert(attrs.class !== 'page' && attrs.dir !== 'rtl' && attrs.id !== 'page-root', '上一页根属性残留');
+    assert(!exportHtml().includes('#abcdef'), '上一页背景残留');
+  });
+  await check('多行标题可编辑，文字不被解释为 HTML', () => {
+    importHtml('<h1>第一行<br>第二行</h1>'); editor.select(editor.getWrapper().find('h1')[0]);
+    assert(!ui.getElementById('text').disabled && ui.getElementById('text').value === '第一行\n第二行', '换行标题无法编辑');
+    change('text', '新的第一行\n<b>纯文字</b>');
+    assert(editor.getSelected().getEl().querySelectorAll('br').length === 1, '换行未保留');
+    assert(!editor.getSelected().getEl().querySelector('b') && exportHtml().includes('&lt;b&gt;'), '文字被解释为标签');
+  });
+  await check('尺寸数字自动补单位，百分比和行高保持原值', () => {
+    change('width', '320'); change('height', '120'); change('padding', '16'); change('gap', '12'); change('margin', '-8');
+    assert(editor.getSelected().getStyle().width === '320px' && editor.getSelected().getStyle().margin === '-8px', '单值尺寸未补单位');
+    change('width', '80%'); change('line-height', '1.8');
+    assert(editor.getSelected().getStyle().width === '80%' && editor.getSelected().getStyle()['line-height'] === '1.8', '原有单位被破坏');
+  });
+  await check('引擎直接撤销重做也同步面板', async () => {
+    change('opacity', '0.35'); await settle();
+    editor.UndoManager.undo(); await settle();
+    assert(ui.getElementById('opacity').value === '', '撤销后面板仍是旧值');
+    editor.UndoManager.redo(); await settle();
+    assert(ui.getElementById('opacity').value === '0.35', '重做后面板未同步');
+  });
+  await check('恢复原样式只移除指定属性且可撤销', async () => {
+    change('css-property', 'opacity'); ui.getElementById('css-reset').click(); await settle();
+    assert(!editor.getSelected().getStyle().opacity && editor.getSelected().getStyle().width === '80%', '恢复误改了其他属性');
+    editor.UndoManager.undo(); await settle();
+    assert(ui.getElementById('opacity').value === '0.35', '恢复操作无法撤销');
+  });
+  await check('透明背景显示棋盘格，选择不会写入黑色', () => {
+    importHtml('<h1 style="background-color:transparent">透明标题</h1>');
+    editor.select(editor.getWrapper().find('h1')[0]);
+    assert(ui.getElementById('background').classList.contains('is-transparent'), '透明显示为实色色块');
+    assert(editor.getSelected().getStyle()['background-color'] === 'transparent', '选择元素改变了背景');
+  });
+  await check('设为透明与选择背景色可以互相切换', () => {
+    change('background', '#112233');
+    assert(!ui.getElementById('background').classList.contains('is-transparent'), '选色后仍显示透明');
+    ui.getElementById('background-transparent').click();
+    assert(ui.getElementById('background-transparent').getAttribute('aria-pressed') === 'true', '透明状态未更新');
+    assert(exportHtml().includes('background-color:transparent'), '透明背景没有导出');
+  });
+  await check('文字与容器显示不同的高级操作', () => {
+    importHtml('<section><h2>标题</h2><p>正文</p></section>');
+    editor.select(editor.getWrapper().find('h2')[0]);
+    assert(!ui.getElementById('typography-tools').hidden && ui.getElementById('layout-tools').hidden, '文字仍显示容器操作');
+    ui.getElementById('select-parent').click();
+    assert(editor.getSelected().get('tagName') === 'section', '没有选中外层');
+    assert(!ui.getElementById('layout-tools').hidden && ui.getElementById('typography-tools').hidden, '容器仍显示文字操作');
+  });
+  await check('分列和列数直接生效，保留子元素', () => {
+    ui.querySelector('[data-layout="grid"]').click(); change('columns', '2'); change('gap', '20');
+    const style = editor.getSelected().getStyle();
+    assert(style.display === 'grid' && style['grid-template-columns'] === 'repeat(2, minmax(0, 1fr))', '分列无效');
+    assert(style.gap === '20px' && editor.getSelected().components().length === 2, '间距或内容错误');
+    assert(!ui.getElementById('columns-field').hidden && ui.getElementById('flex-alignment').hidden, '分列控件不匹配');
+  });
+  await check('无效列数不会覆盖当前布局', () => {
+    change('columns', '0'); assert(editor.getSelected().getStyle()['grid-template-columns'] === 'repeat(2, minmax(0, 1fr))', '接受了零列');
+    change('columns', '2');
+  });
+  await check('布局切换可单步撤销，面板同步', async () => {
+    ui.querySelector('[data-layout="row"]').click(); await settle();
+    assert(editor.getSelected().getStyle().display === 'flex' && ui.getElementById('columns-field').hidden, '横排切换失败');
+    editor.UndoManager.undo(); await settle();
+    assert(editor.getSelected().getStyle().display === 'grid' && !ui.getElementById('columns-field').hidden, '撤销没有恢复分列');
+  });
+  await check('字体和字间距可编辑并导出', () => {
+    editor.select(editor.getWrapper().find('h2')[0]);
+    change('font-family', 'Consolas, monospace'); change('letter-spacing', '1.5');
+    assert(editor.getSelected().getStyle()['letter-spacing'] === '1.5px', '字间距单位错误');
+    assert(exportHtml().includes('Consolas, monospace'), '字体未导出');
+    importHtml(exportHtml());
+    assert(editor.getWrapper().find('section')[0].getStyle()['grid-template-columns'] === 'repeat(2, minmax(0, 1fr))', '分列往返丢失');
+  });
+  await check('复制元素、重命名与锁定操作', () => {
+    importHtml('<main><p style="color:red">测试</p></main>');
+    editor.select(editor.getWrapper().find('p')[0]);
+    ui.getElementById('duplicate-element').click();
+    assert(editor.getWrapper().find('p').length === 2, '复制失败');
+    ui.getElementById('layer-name').value = '第二段';
+    ui.getElementById('layer-name').onchange();
+    assert(editor.getSelected().getName() === '第二段', '图层名称未更新');
+    ui.getElementById('lock-element').click();
+    assert(editor.getSelected().get('draggable') === false && ui.getElementById('properties').disabled, '锁定失败');
+    ui.getElementById('lock-element').click();
+    assert(!ui.getElementById('properties').disabled, '解锁失败');
+  });
+  await check('快照恢复完整项目及标题，继续导出', async () => {
+    const before = exportHtml(), saved = api.tools.capture();
+    editor.getSelected().components('改变后的文字');
+    await api.tools.restore(saved); await api.tools.autosave.flush();
+    assert(exportHtml() === before, '快照往返内容变化');
+    assert(!editor.UndoManager.hasUndo(), '恢复后留下前一工程的历史');
+  });
+  document.getElementById('summary').textContent = `${passed} 项通过，${failed} 项失败`;
+}, 200);
+setTimeout(() => { if (!site.contentWindow.prototypeEditor) { clearInterval(timer); document.getElementById('summary').textContent = '失败：30 秒内未加载编辑引擎，请检查本地 vendor 资源。'; } }, 30000);
+</script></html>
