@@ -300,10 +300,13 @@ const timer = setInterval(async () => {
   await check('未勾选保留时清理内嵌脚本', () => {
     importHtml(interactive); assert(!exportHtml().includes('<script'), '默认导入保留了脚本');
   });
-  await check('属性默认收起，通过更多展开和收起', () => {
-    assert(ui.getElementById('property-panel').hidden, '属性默认展开');
+  await check('样式默认展开，仍可手动收起和重新展开', () => {
+    assert(!ui.getElementById('property-panel').hidden && ui.querySelector('.workspace').classList.contains('with-properties'), '样式没有默认展开');
+    assert(ui.getElementById('properties-toggle').getAttribute('aria-expanded') === 'true', '展开状态不同步');
+    ui.getElementById('properties-close').click();
+    assert(ui.getElementById('property-panel').hidden, '样式不能手动收起');
     ui.getElementById('properties-toggle').click();
-    assert(!ui.getElementById('property-panel').hidden, '更多没有展开属性');
+    assert(!ui.getElementById('property-panel').hidden, '样式不能重新展开');
     ui.getElementById('properties-close').click();
     assert(ui.getElementById('property-panel').hidden, '属性未收起');
   });

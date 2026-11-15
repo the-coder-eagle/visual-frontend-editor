@@ -19,7 +19,7 @@
     <div class="project"><span id="project-name">由你定义</span><span id="save-state" role="status"></span></div>
     <div class="actions"><button id="import-open">导入</button><button id="preview" disabled>预览</button><button class="primary" id="export-open" disabled>导出</button><button id="page-options" popovertarget="page-menu" aria-label="页面选项">•••</button></div>
   </header>
-  <main class="workspace">
+  <main class="workspace with-properties">
     <section id="welcome" class="welcome" aria-label="编辑演示">
       <button id="demo-pause" class="demo-pause" aria-label="暂停演示">Ⅱ</button>
       <div class="demo-stage" role="img" aria-label="演示：选中文字、修改标题、拖动卡片并调整尺寸。">
@@ -43,12 +43,12 @@
         <div id="selection-actions" class="canvas-tools" hidden><button id="element-menu-open" aria-haspopup="true" aria-expanded="false" aria-controls="link-menu">编辑元素 ▾</button></div>
 
         <select id="hidden-sections" aria-label="隐藏章节" title="临时显示隐藏章节" disabled><option value="">正常视图</option></select>
-        <div class="canvas-tools"><select id="device" aria-label="画布尺寸"><option value="Desktop">桌面</option><option value="Mobile">手机</option></select><button id="properties-toggle" aria-expanded="false" aria-controls="property-panel">样式</button></div>
+        <div class="canvas-tools"><select id="device" aria-label="画布尺寸"><option value="Desktop">桌面</option><option value="Mobile">手机</option></select><button id="properties-toggle" aria-expanded="true" aria-controls="property-panel">样式</button></div>
       </div>
       <div id="editor"></div>
       <div id="runtime-preview" hidden><div id="preview-error" role="status" hidden></div><iframe id="preview-frame" title="交互预览" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe></div>
     </section>
-    <aside class="right-panel" id="property-panel" hidden>
+    <aside class="right-panel" id="property-panel">
       <div class="panel-heading"><strong>属性</strong><button id="properties-close" aria-label="收起属性">✕</button></div>
       <div class="property-switch" aria-label="编辑选项"><button id="basic-toggle" aria-pressed="true" aria-controls="basic-properties">常用</button><button id="advanced-toggle" aria-pressed="false" aria-controls="advanced-properties">更多样式</button></div>
       <div class="selection"><strong id="selected-name">选择元素</strong><button id="select-parent" title="选择当前元素所在的外层容器" disabled>选外层 ↑</button></div>
